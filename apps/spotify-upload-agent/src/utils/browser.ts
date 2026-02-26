@@ -15,10 +15,9 @@ export interface BrowserSession {
 
 /**
  * Launches a Playwright browser with persistent auth state support.
- * Auth state is saved per-service so Descript and Spotify sessions are independent.
  */
 export async function launchBrowser(
-  service: 'descript' | 'spotify',
+  service: 'spotify',
 ): Promise<BrowserSession> {
   const authStatePath = path.join(config.browser.authStateDir, `${service}.json`);
 
@@ -62,7 +61,7 @@ export async function launchBrowser(
  */
 export async function saveAuthState(
   context: BrowserContext,
-  service: 'descript' | 'spotify',
+  service: 'spotify',
 ): Promise<void> {
   const authDir = config.browser.authStateDir;
   if (!fs.existsSync(authDir)) {

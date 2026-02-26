@@ -54,7 +54,7 @@ export function getEpisodeMetadata(filePath: string): EpisodeMetadata {
 
   return {
     title,
-    description: `${title} - Podiatry Marketing`,
+    description: title,
     episodeNumber,
     publishImmediately: false, // Default to draft for safety
   };

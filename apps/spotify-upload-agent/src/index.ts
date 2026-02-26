@@ -1,54 +1,46 @@
 import { config } from './config';
 import { launchBrowser } from './utils/browser';
 import { createLogger } from './utils/logger';
-import { downloadNewEpisodes } from './descript/download';
+import { downloadNewVideos } from './youtube/download';
 import { uploadNewEpisodes } from './spotify/upload';
 
 const log = createLogger('agent');
 
 /**
- * Main orchestrator: downloads new episodes from Descript, then uploads
+ * Main orchestrator: downloads new videos from YouTube, then uploads
  * them to Spotify for Creators.
  *
  * Usage:
  *   yarn start              # Run the full pipeline
- *   yarn download           # Only download from Descript
+ *   yarn download           # Only download from YouTube
  *   yarn upload             # Only upload to Spotify
- *   yarn auth:descript      # Save Descript login session
  *   yarn auth:spotify       # Save Spotify login session
  */
 async function main() {
   log.info('=== Spotify Upload Agent ===');
-  log.info(`Project: ${config.descript.projectName}`);
+  log.info(`YouTube source: ${config.youtube.url}`);
   log.info(`Download directory: ${config.export.downloadDir}`);
-  log.info(`Headless mode: ${config.browser.headless}`);
   log.info('');
 
-  // --- Phase 1: Download from Descript ---
-  log.info('--- Phase 1: Downloading episodes from Descript ---');
-  const descriptSession = await launchBrowser('descript');
+  // --- Phase 1: Download from YouTube ---
+  log.info('--- Phase 1: Downloading videos from YouTube ---');
   let downloadedFiles: string[] = [];
 
   try {
-    const results = await downloadNewEpisodes(
-      descriptSession.page,
-      descriptSession.context,
-    );
+    const results = await downloadNewVideos();
     downloadedFiles = results.map((r) => r.filePath);
 
     if (results.length === 0) {
-      log.info('No new episodes to download from Descript');
+      log.info('No new videos to download from YouTube');
     } else {
-      log.info(`Downloaded ${results.length} episode(s):`);
-      for (const { episode, filePath } of results) {
-        log.info(`  - ${episode.name} → ${filePath}`);
+      log.info(`Downloaded ${results.length} video(s):`);
+      for (const { title, filePath } of results) {
+        log.info(`  - ${title} -> ${filePath}`);
       }
     }
   } catch (err) {
-    log.error('Descript download phase failed', err);
+    log.error('YouTube download phase failed', err);
     throw err;
-  } finally {
-    await descriptSession.close();
   }
 
   // --- Phase 2: Upload to Spotify for Creators ---

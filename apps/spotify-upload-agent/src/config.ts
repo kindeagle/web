@@ -14,11 +14,8 @@ function requireEnv(key: string): string {
 }
 
 export const config = {
-  descript: {
-    email: requireEnv('DESCRIPT_EMAIL'),
-    password: requireEnv('DESCRIPT_PASSWORD'),
-    projectName: process.env.DESCRIPT_PROJECT_NAME ?? 'Podiatry Marketing',
-    baseUrl: 'https://web.descript.com',
+  youtube: {
+    url: requireEnv('YOUTUBE_URL'),
   },
 
   spotify: {
@@ -31,8 +28,6 @@ export const config = {
     downloadDir: path.resolve(
       process.env.DOWNLOAD_DIR ?? path.join(__dirname, '../downloads'),
     ),
-    format: (process.env.EXPORT_FORMAT ?? 'mp4') as 'mp4' | 'mov',
-    quality: (process.env.EXPORT_QUALITY ?? 'high') as 'high' | 'medium' | 'low',
   },
 
   browser: {

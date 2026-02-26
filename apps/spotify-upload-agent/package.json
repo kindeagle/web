@@ -1,13 +1,12 @@
 {
   "name": "@base-org/spotify-upload-agent",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Browser automation agent to download episodes from Descript and upload to Spotify for Creators",
+  "description": "Agent to download videos from YouTube and upload to Spotify for Creators",
   "scripts": {
     "start": "ts-node src/index.ts",
-    "download": "ts-node src/descript/download.ts",
+    "download": "ts-node src/youtube/download.ts",
     "upload": "ts-node src/spotify/upload.ts",
-    "auth:descript": "ts-node src/descript/auth.ts",
     "auth:spotify": "ts-node src/spotify/auth.ts",
     "lint": "eslint src --ext .ts",
     "test": "echo 'No tests yet'"
