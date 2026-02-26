@@ -89,27 +89,34 @@ export async function uploadEpisode(
   // -- Step 1: Upload the video file --
   log.info('Uploading video file...');
 
-  // Spotify for Creators has a file input for episode upload
-  // Look for the file input element (may be hidden behind a button)
-  const fileInput = page.locator(
-    'input[type="file"], input[accept*="video"], input[accept*="audio"]',
-  ).first();
-  const fileInputVisible = await fileInput.isVisible().catch(() => false);
+  // Spotify for Creators uses a file input that may be hidden.
+  // Playwright can set files on hidden inputs directly via setInputFiles.
+  const fileInput = page.locator('input[type="file"]').first();
+  const inputExists = await fileInput.count().catch(() => 0);
 
-  if (fileInputVisible) {
+  if (inputExists > 0) {
+    // Force-set files even if hidden — Playwright handles this
     await fileInput.setInputFiles(filePath);
   } else {
-    // Some UIs hide the input, look for an upload area
+    // No file input in DOM yet — click an upload button to trigger it
     const uploadBtn = page.locator(
       'button:has-text("Upload"), button:has-text("Select a file"), ' +
-      'button:has-text("Choose file"), [data-testid="upload-button"]',
+      'button:has-text("Choose file"), button:has-text("Select file"), ' +
+      'button:has-text("Add episode"), button:has-text("Add video"), ' +
+      '[data-testid*="upload"], [role="button"]:has-text("Upload"), ' +
+      'a:has-text("Upload"), label:has-text("Upload")',
     ).first();
-    await uploadBtn.click();
+    await uploadBtn.click({ timeout: 15_000 });
+    await page.waitForTimeout(2000);
 
-    // After clicking, the hidden file input should become actionable
+    // Now look for the file input that should have appeared
     const hiddenInput = page.locator('input[type="file"]').first();
     await hiddenInput.setInputFiles(filePath);
   }
+
+  // Take a screenshot for debugging
+  const screenshotDir = config.export.downloadDir;
+  await page.screenshot({ path: path.join(screenshotDir, '_last-upload.png') }).catch(() => {});
 
   // Wait for the upload to complete (can take a while for large video files)
   log.info('Waiting for upload to complete...');
