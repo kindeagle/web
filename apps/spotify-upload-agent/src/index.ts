@@ -44,9 +44,13 @@ async function main() {
   const spotifySession = await launchBrowser('spotify');
 
   try {
-    // Ensure logged in to Spotify
-    if (!(await isLoggedIn(spotifySession.page))) {
-      await loginToSpotify(spotifySession.page, spotifySession.context);
+    // In visible mode, the user handles login + navigation manually via prompts.
+    // In headless mode, rely on saved auth state.
+    if (config.browser.headless) {
+      if (!(await isLoggedIn(spotifySession.page))) {
+        log.error('Not logged in. Run with HEADLESS=false first to save a session.');
+        process.exit(1);
+      }
     }
 
     let successCount = 0;

@@ -94,13 +94,15 @@ export async function uploadEpisode(
   const screenshotDir = config.export.downloadDir;
 
   if (!config.browser.headless) {
-    // In visible mode: let the user navigate to the upload page manually
-    await page.goto(`${config.spotify.baseUrl}/dashboard`, {
+    // In visible mode: let the user log in and navigate manually
+    await page.goto('https://accounts.spotify.com/login', {
       waitUntil: 'domcontentloaded',
     });
     log.info('');
-    log.info('==> Browser is open. Please navigate to the "New episode" page.');
-    log.info('==> Once you see the upload/file picker on screen, come back here and press Enter.');
+    log.info('==> Browser is open at the Spotify login page.');
+    log.info('==> 1. Log in with your Spotify credentials');
+    log.info('==> 2. Navigate to Spotify for Creators and go to the "New episode" upload page');
+    log.info('==> 3. Once you see the file upload area, come back here and press Enter');
     log.info('');
     await waitForEnter('Press Enter when ready... ');
   } else {
