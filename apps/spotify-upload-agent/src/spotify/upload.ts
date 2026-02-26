@@ -1,10 +1,21 @@
 import { Page, BrowserContext } from 'playwright';
+import readline from 'readline';
 import path from 'path';
 import fs from 'fs';
 import { config } from '../config';
 import { launchBrowser, retry } from '../utils/browser';
 import { createLogger } from '../utils/logger';
 import { loginToSpotify, isLoggedIn } from './auth';
+
+function waitForEnter(prompt: string): Promise<void> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(prompt, () => {
+      rl.close();
+      resolve();
+    });
+  });
+}
 
 const log = createLogger('spotify:upload');
 
@@ -80,39 +91,44 @@ export async function uploadEpisode(
     throw new Error(`File not found: ${filePath}`);
   }
 
-  // Navigate to dashboard first (we know this loads), then click to new episode
-  log.info('Navigating to dashboard...');
-  await page.goto(`${config.spotify.baseUrl}/dashboard`, {
-    waitUntil: 'domcontentloaded',
-  });
-  await page.waitForTimeout(5000);
+  const screenshotDir = config.export.downloadDir;
 
-  // Look for a "New episode" / "Create" / "Upload" button on the dashboard
-  log.info('Looking for new episode button...');
-  const newEpisodeBtn = page.locator(
-    'button:has-text("New episode"), button:has-text("Create episode"), ' +
-    'a:has-text("New episode"), a:has-text("Create episode"), ' +
-    'button:has-text("Upload"), a:has-text("Upload"), ' +
-    '[data-testid*="new-episode"], [data-testid*="create"]',
-  ).first();
-
-  const btnExists = await newEpisodeBtn.isVisible({ timeout: 10_000 }).catch(() => false);
-  if (btnExists) {
-    await newEpisodeBtn.click();
-    await page.waitForTimeout(5000);
-  } else {
-    // Fallback: try direct navigation
-    log.warn('No new episode button found, trying direct navigation...');
-    await page.goto(`${config.spotify.baseUrl}/dashboard/episodes/new`, {
+  if (!config.browser.headless) {
+    // In visible mode: let the user navigate to the upload page manually
+    await page.goto(`${config.spotify.baseUrl}/dashboard`, {
       waitUntil: 'domcontentloaded',
     });
-    await page.waitForTimeout(10_000);
+    log.info('');
+    log.info('==> Browser is open. Please navigate to the "New episode" page.');
+    log.info('==> Once you see the upload/file picker on screen, come back here and press Enter.');
+    log.info('');
+    await waitForEnter('Press Enter when ready... ');
+  } else {
+    // In headless mode: try automated navigation
+    await page.goto(`${config.spotify.baseUrl}/dashboard`, {
+      waitUntil: 'domcontentloaded',
+    });
+    await page.waitForTimeout(8000);
+
+    const newEpisodeBtn = page.locator(
+      'button:has-text("New episode"), a:has-text("New episode"), ' +
+      'button:has-text("Create episode"), a:has-text("Create episode"), ' +
+      'button:has-text("Upload"), a:has-text("Upload")',
+    ).first();
+
+    const btnExists = await newEpisodeBtn.isVisible({ timeout: 10_000 }).catch(() => false);
+    if (btnExists) {
+      await newEpisodeBtn.click();
+      await page.waitForTimeout(5000);
+    } else {
+      await page.goto(`${config.spotify.baseUrl}/dashboard/episodes/new`, {
+        waitUntil: 'domcontentloaded',
+      });
+      await page.waitForTimeout(10_000);
+    }
   }
 
-  // Take a screenshot so we can see the current state
-  const screenshotDir = config.export.downloadDir;
   await page.screenshot({ path: path.join(screenshotDir, '_page-state.png'), fullPage: true }).catch(() => {});
-  log.info(`Screenshot saved to ${path.join(screenshotDir, '_page-state.png')}`);
 
   // -- Step 1: Upload the video file --
   log.info('Uploading video file...');

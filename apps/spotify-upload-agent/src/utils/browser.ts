@@ -26,6 +26,7 @@ export async function launchBrowser(
   const browser = await chromium.launch({
     headless: config.browser.headless,
     slowMo: config.browser.slowMo,
+    channel: 'chrome', // Use system Chrome instead of bundled Chromium
   });
 
   // Restore saved auth state if available
