@@ -11,8 +11,9 @@ const log = createLogger('spotify:auth');
 export async function isLoggedIn(page: Page): Promise<boolean> {
   try {
     await page.goto(`${config.spotify.baseUrl}/dashboard`, {
-      waitUntil: 'networkidle',
+      waitUntil: 'domcontentloaded',
     });
+    await page.waitForTimeout(5000);
     const url = page.url();
     // If we stay on dashboard (not redirected to login), we're authenticated
     return url.includes('/dashboard') || url.includes('/episodes');
@@ -30,8 +31,9 @@ export async function loginToSpotify(
 ): Promise<void> {
   log.info('Navigating to Spotify for Creators login...');
   await page.goto(`${config.spotify.baseUrl}/dashboard`, {
-    waitUntil: 'networkidle',
+    waitUntil: 'domcontentloaded',
   });
+  await page.waitForTimeout(5000);
 
   // Check if already logged in
   const url = page.url();

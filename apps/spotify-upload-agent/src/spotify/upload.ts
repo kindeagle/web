@@ -82,9 +82,10 @@ export async function uploadEpisode(
 
   // Navigate to the new episode creation page
   await page.goto(`${config.spotify.baseUrl}/dashboard/episodes/new`, {
-    waitUntil: 'networkidle',
+    waitUntil: 'domcontentloaded',
   });
-  await page.waitForTimeout(2000);
+  // Wait for the SPA to finish rendering
+  await page.waitForTimeout(10_000);
 
   // -- Step 1: Upload the video file --
   log.info('Uploading video file...');
