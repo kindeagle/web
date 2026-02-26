@@ -1,9 +1,20 @@
 import { Page, BrowserContext } from 'playwright';
+import readline from 'readline';
 import { config } from '../config';
 import { launchBrowser, saveAuthState } from '../utils/browser';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('spotify:auth');
+
+function waitForEnter(prompt: string): Promise<void> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(prompt, () => {
+      rl.close();
+      resolve();
+    });
+  });
+}
 
 /**
  * Checks whether the current session is authenticated with Spotify for Creators.
@@ -15,7 +26,6 @@ export async function isLoggedIn(page: Page): Promise<boolean> {
     });
     await page.waitForTimeout(5000);
     const url = page.url();
-    // If we stay on dashboard (not redirected to login), we're authenticated
     return url.includes('/dashboard') || url.includes('/episodes');
   } catch {
     return false;
@@ -23,62 +33,43 @@ export async function isLoggedIn(page: Page): Promise<boolean> {
 }
 
 /**
- * Logs into Spotify for Creators using email + password.
+ * Logs into Spotify for Creators. In visible mode, lets the user
+ * log in manually. In headless mode, uses saved auth state.
  */
 export async function loginToSpotify(
   page: Page,
   context: BrowserContext,
 ): Promise<void> {
-  log.info('Navigating to Spotify for Creators login...');
+  log.info('Navigating to Spotify for Creators...');
   await page.goto(`${config.spotify.baseUrl}/dashboard`, {
     waitUntil: 'domcontentloaded',
   });
   await page.waitForTimeout(5000);
 
-  // Check if already logged in
   const url = page.url();
   if (url.includes('/dashboard') && !url.includes('login')) {
     log.info('Already logged in to Spotify for Creators');
     return;
   }
 
-  log.info('Entering Spotify credentials...');
-
-  // Spotify login form
-  const emailInput = page.locator(
-    'input[id="login-username"], input[name="username"], input[type="email"], input[placeholder*="email" i]',
-  );
-  await emailInput.waitFor({ state: 'visible', timeout: 15_000 });
-  await emailInput.fill(config.spotify.email);
-
-  const passwordInput = page.locator(
-    'input[id="login-password"], input[name="password"], input[type="password"]',
-  );
-  await passwordInput.waitFor({ state: 'visible', timeout: 15_000 });
-  await passwordInput.fill(config.spotify.password);
-
-  // Click login button
-  const loginBtn = page.locator(
-    'button[id="login-button"], button:has-text("Log In"), button:has-text("Sign in"), button[type="submit"]',
-  ).first();
-  await loginBtn.click();
-
-  // Wait for redirect to dashboard
-  await page.waitForURL(/\/(dashboard|episodes|home)/, { timeout: 30_000 });
-  log.info('Successfully logged in to Spotify for Creators');
+  // Let the user log in manually
+  log.info('');
+  log.info('==> Please log in to Spotify for Creators in the browser window.');
+  log.info('==> Once you are on the dashboard, come back here and press Enter.');
+  log.info('');
+  await waitForEnter('Press Enter after you have logged in... ');
 
   await saveAuthState(context, 'spotify');
+  log.info('Session saved.');
 }
 
 /**
- * Standalone script: run `yarn auth:spotify` to interactively log in
+ * Standalone script: run `npm run auth:spotify` to interactively log in
  * and save the auth state for future headless runs.
  */
 async function main() {
   log.info('Starting Spotify for Creators authentication (visible browser)...');
-  log.info('This will save your session so future runs can be headless.');
 
-  // Force visible browser for initial auth
   process.env.HEADLESS = 'false';
   const session = await launchBrowser('spotify');
 
