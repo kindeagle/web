@@ -80,12 +80,39 @@ export async function uploadEpisode(
     throw new Error(`File not found: ${filePath}`);
   }
 
-  // Navigate to the new episode creation page
-  await page.goto(`${config.spotify.baseUrl}/dashboard/episodes/new`, {
+  // Navigate to dashboard first (we know this loads), then click to new episode
+  log.info('Navigating to dashboard...');
+  await page.goto(`${config.spotify.baseUrl}/dashboard`, {
     waitUntil: 'domcontentloaded',
   });
-  // Wait for the SPA to finish rendering
-  await page.waitForTimeout(10_000);
+  await page.waitForTimeout(5000);
+
+  // Look for a "New episode" / "Create" / "Upload" button on the dashboard
+  log.info('Looking for new episode button...');
+  const newEpisodeBtn = page.locator(
+    'button:has-text("New episode"), button:has-text("Create episode"), ' +
+    'a:has-text("New episode"), a:has-text("Create episode"), ' +
+    'button:has-text("Upload"), a:has-text("Upload"), ' +
+    '[data-testid*="new-episode"], [data-testid*="create"]',
+  ).first();
+
+  const btnExists = await newEpisodeBtn.isVisible({ timeout: 10_000 }).catch(() => false);
+  if (btnExists) {
+    await newEpisodeBtn.click();
+    await page.waitForTimeout(5000);
+  } else {
+    // Fallback: try direct navigation
+    log.warn('No new episode button found, trying direct navigation...');
+    await page.goto(`${config.spotify.baseUrl}/dashboard/episodes/new`, {
+      waitUntil: 'domcontentloaded',
+    });
+    await page.waitForTimeout(10_000);
+  }
+
+  // Take a screenshot so we can see the current state
+  const screenshotDir = config.export.downloadDir;
+  await page.screenshot({ path: path.join(screenshotDir, '_page-state.png'), fullPage: true }).catch(() => {});
+  log.info(`Screenshot saved to ${path.join(screenshotDir, '_page-state.png')}`);
 
   // -- Step 1: Upload the video file --
   log.info('Uploading video file...');
@@ -99,25 +126,26 @@ export async function uploadEpisode(
     // Force-set files even if hidden — Playwright handles this
     await fileInput.setInputFiles(filePath);
   } else {
-    // No file input in DOM yet — click an upload button to trigger it
+    // Try clicking any upload-like element on the page
+    log.info('No file input found, looking for upload trigger...');
     const uploadBtn = page.locator(
       'button:has-text("Upload"), button:has-text("Select a file"), ' +
       'button:has-text("Choose file"), button:has-text("Select file"), ' +
       'button:has-text("Add episode"), button:has-text("Add video"), ' +
       '[data-testid*="upload"], [role="button"]:has-text("Upload"), ' +
-      'a:has-text("Upload"), label:has-text("Upload")',
+      'a:has-text("Upload"), label:has-text("Upload"), ' +
+      '[class*="upload"], [class*="dropzone"]',
     ).first();
     await uploadBtn.click({ timeout: 15_000 });
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
 
     // Now look for the file input that should have appeared
     const hiddenInput = page.locator('input[type="file"]').first();
     await hiddenInput.setInputFiles(filePath);
   }
 
-  // Take a screenshot for debugging
-  const screenshotDir = config.export.downloadDir;
-  await page.screenshot({ path: path.join(screenshotDir, '_last-upload.png') }).catch(() => {});
+  // Screenshot after file selection
+  await page.screenshot({ path: path.join(screenshotDir, '_after-upload.png') }).catch(() => {});
 
   // Wait for the upload to complete (can take a while for large video files)
   log.info('Waiting for upload to complete...');
