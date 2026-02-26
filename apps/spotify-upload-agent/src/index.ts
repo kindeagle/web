@@ -1,75 +1,91 @@
+import fs from 'fs';
+import path from 'path';
 import { config } from './config';
-import { launchBrowser } from './utils/browser';
+import { launchBrowser, retry } from './utils/browser';
 import { createLogger } from './utils/logger';
-import { downloadNewVideos } from './youtube/download';
-import { uploadNewEpisodes } from './spotify/upload';
+import { listVideos, downloadVideo } from './youtube/download';
+import { uploadEpisode, getEpisodeMetadata } from './spotify/upload';
+import { loginToSpotify, isLoggedIn } from './spotify/auth';
 
 const log = createLogger('agent');
 
 /**
- * Main orchestrator: downloads new videos from YouTube, then uploads
- * them to Spotify for Creators.
- *
- * Usage:
- *   yarn start              # Run the full pipeline
- *   yarn download           # Only download from YouTube
- *   yarn upload             # Only upload to Spotify
- *   yarn auth:spotify       # Save Spotify login session
+ * Main orchestrator: for each new YouTube video, downloads it, uploads it
+ * to Spotify for Creators, then deletes the local file to save disk space.
  */
 async function main() {
   log.info('=== Spotify Upload Agent ===');
   log.info(`YouTube source: ${config.youtube.url}`);
-  log.info(`Download directory: ${config.export.downloadDir}`);
+  log.info('Mode: download → upload → delete (one at a time)');
   log.info('');
 
-  // --- Phase 1: Download from YouTube ---
-  log.info('--- Phase 1: Downloading videos from YouTube ---');
-  let downloadedFiles: string[] = [];
+  // Single manifest tracking video IDs that have been fully processed
+  const downloadDir = config.export.downloadDir;
+  if (!fs.existsSync(downloadDir)) {
+    fs.mkdirSync(downloadDir, { recursive: true });
+  }
+  const manifestPath = path.join(downloadDir, '.processed-manifest.json');
+  const processed: Set<string> = fs.existsSync(manifestPath)
+    ? new Set(JSON.parse(fs.readFileSync(manifestPath, 'utf-8')))
+    : new Set();
 
-  try {
-    const results = await downloadNewVideos();
-    downloadedFiles = results.map((r) => r.filePath);
+  // Fetch the full video list from YouTube
+  const videos = await listVideos(config.youtube.url);
+  const newVideos = videos.filter((v) => !processed.has(v.id));
 
-    if (results.length === 0) {
-      log.info('No new videos to download from YouTube');
-    } else {
-      log.info(`Downloaded ${results.length} video(s):`);
-      for (const { title, filePath } of results) {
-        log.info(`  - ${title} -> ${filePath}`);
-      }
-    }
-  } catch (err) {
-    log.error('YouTube download phase failed', err);
-    throw err;
+  if (newVideos.length === 0) {
+    log.info('No new videos to process');
+    return;
   }
 
-  // --- Phase 2: Upload to Spotify for Creators ---
-  log.info('');
-  log.info('--- Phase 2: Uploading episodes to Spotify for Creators ---');
+  log.info(`${newVideos.length} new video(s) to process (${videos.length} total on channel)`);
+
+  // Launch browser once for all uploads
   const spotifySession = await launchBrowser('spotify');
 
   try {
-    // Upload the newly downloaded files (or any pending files in the downloads dir)
-    const uploaded = await uploadNewEpisodes(
-      spotifySession.page,
-      spotifySession.context,
-      downloadedFiles.length > 0 ? downloadedFiles : undefined,
-    );
-
-    if (uploaded.length === 0) {
-      log.info('No new episodes to upload to Spotify');
-    } else {
-      log.info(`Uploaded ${uploaded.length} episode(s) to Spotify for Creators`);
+    // Ensure logged in to Spotify
+    if (!(await isLoggedIn(spotifySession.page))) {
+      await loginToSpotify(spotifySession.page, spotifySession.context);
     }
-  } catch (err) {
-    log.error('Spotify upload phase failed', err);
-    throw err;
+
+    let successCount = 0;
+
+    for (const { id, title } of newVideos) {
+      log.info('');
+      log.info(`--- Processing: "${title}" (${id}) ---`);
+      let filePath: string | undefined;
+
+      try {
+        // Step 1: Download from YouTube
+        filePath = await downloadVideo(id, title);
+
+        // Step 2: Upload to Spotify
+        const metadata = getEpisodeMetadata(filePath);
+        await retry(() => uploadEpisode(spotifySession.page, filePath!, metadata));
+
+        // Step 3: Mark as processed
+        processed.add(id);
+        fs.writeFileSync(manifestPath, JSON.stringify([...processed], null, 2));
+        successCount++;
+
+        log.info(`Done: "${title}" uploaded to Spotify`);
+      } catch (err) {
+        log.error(`Failed to process "${title}" (${id})`, err);
+      } finally {
+        // Step 4: Delete local file to free disk space
+        if (filePath && fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          log.info(`Deleted local file: ${filePath}`);
+        }
+      }
+    }
+
+    log.info('');
+    log.info(`=== Done: ${successCount}/${newVideos.length} video(s) processed ===`);
   } finally {
     await spotifySession.close();
   }
-
-  log.info('');
-  log.info('=== Agent run complete ===');
 }
 
 main().catch((err) => {
