@@ -21,20 +21,25 @@ function waitForEnter(prompt: string): Promise<void> {
 }
 
 /**
- * Main orchestrator: for each new YouTube video, downloads it, adds the video
- * to the matching existing Spotify episode, then deletes the local file.
+ * Main orchestrator: for each new YouTube video, downloads it, finds the
+ * matching existing episode on Spotify for Creators via the three-dot menu,
+ * uploads the video, then deletes the local file.
+ *
+ * Login is manual (user logs in once). Everything after that is automated.
  */
 async function main() {
   log.info('=== Spotify Video Upload Agent ===');
   log.info(`YouTube source: ${config.youtube.url}`);
-  log.info('Mode: download → add video to existing episode → delete (one at a time)');
+  log.info('Mode: download → find episode → three-dot menu → upload video → delete');
   log.info('');
 
-  // Single manifest tracking video IDs that have been fully processed
+  // Ensure download directory exists
   const downloadDir = config.export.downloadDir;
   if (!fs.existsSync(downloadDir)) {
     fs.mkdirSync(downloadDir, { recursive: true });
   }
+
+  // Track which video IDs have been fully processed
   const manifestPath = path.join(downloadDir, '.processed-manifest.json');
   const processed: Set<string> = fs.existsSync(manifestPath)
     ? new Set(JSON.parse(fs.readFileSync(manifestPath, 'utf-8')))
@@ -51,25 +56,13 @@ async function main() {
 
   log.info(`${newVideos.length} new video(s) to process (${videos.length} total on channel)`);
 
-  // Launch browser once for all uploads
-  const spotifySession = await launchBrowser('spotify');
+  // Launch browser
+  const session = await launchBrowser('spotify');
 
   try {
-    if (!config.browser.headless) {
-      // In visible mode: open Spotify login and let user log in
-      await spotifySession.page.goto('https://accounts.spotify.com/login', {
-        waitUntil: 'domcontentloaded',
-      });
-      log.info('');
-      log.info('==> Browser is open. Please log in to Spotify for Creators.');
-      log.info('==> Once you are logged in and on the dashboard, press Enter.');
-      log.info('');
-      await waitForEnter('Press Enter after logging in... ');
-    } else {
-      if (!(await isLoggedIn(spotifySession.page))) {
-        log.error('Not logged in. Run with HEADLESS=false first to save a session.');
-        process.exit(1);
-      }
+    // Manual login: user logs in once, then everything is automated
+    if (!(await isLoggedIn(session.page))) {
+      await loginToSpotify(session.page, session.context);
     }
 
     let successCount = 0;
@@ -83,8 +76,8 @@ async function main() {
         // Step 1: Download from YouTube
         filePath = await downloadVideo(id, title);
 
-        // Step 2: Add video to existing Spotify episode
-        await retry(() => addVideoToEpisode(spotifySession.page, filePath!, title));
+        // Step 2: Find episode on Spotify, open upload video page, attach file
+        await retry(() => addVideoToEpisode(session.page, filePath!, title));
 
         // Step 3: Mark as processed
         processed.add(id);
@@ -106,7 +99,7 @@ async function main() {
     log.info('');
     log.info(`=== Done: ${successCount}/${newVideos.length} video(s) processed ===`);
   } finally {
-    await spotifySession.close();
+    await session.close();
   }
 }
 

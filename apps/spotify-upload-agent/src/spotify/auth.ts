@@ -1,7 +1,7 @@
 import { Page, BrowserContext } from 'playwright';
 import readline from 'readline';
 import { config } from '../config';
-import { launchBrowser, saveAuthState } from '../utils/browser';
+import { saveAuthState } from '../utils/browser';
 import { createLogger } from '../utils/logger';
 
 const log = createLogger('spotify:auth');
@@ -71,6 +71,7 @@ async function main() {
   log.info('Starting Spotify for Creators authentication (visible browser)...');
 
   process.env.HEADLESS = 'false';
+  const { launchBrowser } = await import('../utils/browser');
   const session = await launchBrowser('spotify');
 
   try {
